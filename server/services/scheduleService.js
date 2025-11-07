@@ -2,6 +2,7 @@ const universityConfig = require('../config/university.json');
 
 class ScheduleService {
   constructor() {
+    this.config = universityConfig;
     // Mock schedule data - в реальном приложении это будет из базы данных
     this.scheduleData = {
       'ИВТ-101': [

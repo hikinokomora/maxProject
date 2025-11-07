@@ -70,7 +70,7 @@ class EventsService {
     };
   }
 
-  getUpcomingEvents(limit = 5) {
+  getRecentEvents(limit = 5) {
     // В реальном приложении здесь будет фильтрация по дате
     return {
       success: true,

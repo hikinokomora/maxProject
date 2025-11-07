@@ -5,7 +5,12 @@ class ApplicationsService {
     this.config = universityConfig;
     // Mock storage - в реальном приложении это будет база данных
     this.applications = [];
-    this.nextId = 1;
+    // Use timestamp-based IDs for better uniqueness
+    this.nextId = Date.now();
+  }
+
+  generateId() {
+    return this.nextId++;
   }
 
   createApplication(data) {
@@ -29,7 +34,7 @@ class ApplicationsService {
     }
 
     const application = {
-      id: this.nextId++,
+      id: this.generateId(),
       type,
       typeName: validType.name,
       studentName,

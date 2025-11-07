@@ -11,7 +11,8 @@ router.get('/', (req, res) => {
     if (category) {
       result = eventsService.getEventsByCategory(category);
     } else if (limit) {
-      result = eventsService.getUpcomingEvents(parseInt(limit));
+      const parsedLimit = Math.max(1, Math.min(100, parseInt(limit) || 5));
+      result = eventsService.getRecentEvents(parsedLimit);
     } else {
       result = eventsService.getAllEvents();
     }

@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import chatService from '../services/chatService';
 import '../styles/ChatBot.css';
 
+const MAX_EVENTS_TO_SHOW = 5;
+
 function ChatBot() {
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
@@ -60,7 +62,7 @@ function ChatBot() {
 
         // Handle specific actions
         if (response.data.action === 'events') {
-          const eventsResponse = await chatService.getEvents(null, 5);
+          const eventsResponse = await chatService.getEvents(null, MAX_EVENTS_TO_SHOW);
           if (eventsResponse.success && eventsResponse.data.length > 0) {
             addBotMessage({
               text: 'Предстоящие мероприятия:',
