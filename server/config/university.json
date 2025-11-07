@@ -1,0 +1,58 @@
+{
+  "universityName": "Университет Образец",
+  "universityShortName": "УО",
+  "supportEmail": "support@university.edu",
+  "supportPhone": "+7 (XXX) XXX-XX-XX",
+  "features": {
+    "applications": true,
+    "schedule": true,
+    "events": true
+  },
+  "applicationTypes": [
+    {
+      "id": "academic_leave",
+      "name": "Академический отпуск",
+      "description": "Заявление на академический отпуск"
+    },
+    {
+      "id": "dorm",
+      "name": "Общежитие",
+      "description": "Заявление на предоставление места в общежитии"
+    },
+    {
+      "id": "certificate",
+      "name": "Справка",
+      "description": "Запрос справки об обучении"
+    },
+    {
+      "id": "transfer",
+      "name": "Перевод",
+      "description": "Заявление на перевод на другую специальность"
+    }
+  ],
+  "departments": [
+    "Факультет информатики",
+    "Экономический факультет",
+    "Юридический факультет",
+    "Инженерный факультет"
+  ],
+  "welcomeMessage": "Здравствуйте! Я ваш виртуальный помощник. Я могу помочь вам с заявлениями, расписанием и информацией о мероприятиях.",
+  "chatCommands": [
+    {
+      "command": "расписание",
+      "description": "Получить расписание занятий"
+    },
+    {
+      "command": "мероприятия",
+      "description": "Узнать о предстоящих событиях"
+    },
+    {
+      "command": "заявление",
+      "description": "Подать заявление"
+    },
+    {
+      "command": "помощь",
+      "description": "Показать список доступных команд"
+    }
+  ]
+}
