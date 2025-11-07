@@ -2,18 +2,17 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
-COPY client/package*.json ./client/
+# Copy server package files and install dependencies
 COPY server/package*.json ./server/
+RUN cd server && npm install --legacy-peer-deps
 
-# Install dependencies
-RUN npm install
-RUN cd client && npm install
-RUN cd server && npm install
+# Copy client package files and install dependencies
+COPY client/package*.json ./client/
+RUN cd client && npm install --legacy-peer-deps
 
 # Copy application files
-COPY . .
+COPY server ./server
+COPY client ./client
 
 # Build React app
 RUN cd client && npm run build
@@ -22,4 +21,4 @@ RUN cd client && npm run build
 EXPOSE 3000 5000
 
 # Start the application
-CMD ["npm", "start"]
+CMD ["node", "server/index.js"]
