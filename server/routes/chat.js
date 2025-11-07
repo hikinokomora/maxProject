@@ -6,6 +6,7 @@ const chatService = require('../services/chatService');
 router.post('/', (req, res) => {
   try {
     const { message } = req.body;
+    console.log('[CHAT] Incoming payload:', req.body);
 
     if (!message) {
       return res.status(400).json({
@@ -15,6 +16,7 @@ router.post('/', (req, res) => {
     }
 
     const response = chatService.processMessage(message);
+    console.log('[CHAT] Responding with:', response);
     res.json({
       success: true,
       data: response

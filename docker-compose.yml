@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   chatbot:
     build: .
@@ -9,6 +7,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=5000
+      - BOT_TOKEN=${BOT_TOKEN}
     volumes:
       - ./server/config:/app/server/config
     restart: unless-stopped

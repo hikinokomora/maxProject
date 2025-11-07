@@ -12,23 +12,56 @@
 
 ## Технологии
 
-- **Frontend**: React.js с современным UI/UX
+- **Frontend**: React.js с современным UI/UX (опционально для веб-интерфейса)
 - **Backend**: Node.js + Express
+- **MAX Bot**: Официальный SDK `@maxhub/max-bot-api`
 - **Контейнеризация**: Docker
 
 ## Быстрый старт
 
-### Запуск через Docker (рекомендуется)
+### Запуск MAX бота (рекомендуется)
+
+**1. Получите токен бота**
+- Зарегистрируйте бота на [dev.max.ru](https://dev.max.ru)
+- Скопируйте токен из настроек бота
+
+**2. Настройте переменные окружения**
+
+Создайте `.env` в корне проекта:
+```env
+BOT_TOKEN=ваш_токен_от_MAX
+```
+
+**3. Запустите через Docker:**
+```powershell
+docker compose up --build -d
+docker compose logs -f chatbot
+```
+
+Или локально:
+```powershell
+cd server
+npm install
+npm start
+```
+
+**4. Найдите бота в MAX messenger и напишите `/start`**
+
+Подробная инструкция: [MAX_BOT_SETUP.md](./MAX_BOT_SETUP.md)
+
+### Запуск веб-интерфейса (опционально)
+
+Если нужен веб-интерфейс для демонстрации:
 
 ```bash
 # Сборка образа
 docker build -t max-chatbot .
 
-# Запуск контейнера
-docker run -p 3000:3000 -p 5000:5000 max-chatbot
+# Запуск контейнера с токеном бота
+docker run -e BOT_TOKEN=ваш_токен -p 5000:5000 max-chatbot
 ```
 
-Приложение будет доступно по адресу: http://localhost:3000
+Веб-интерфейс будет доступен по адресу: http://localhost:5000
 
 ### Локальный запуск для разработки
 
@@ -38,6 +71,27 @@ npm run install:all
 
 # Запуск в режиме разработки
 npm run dev
+```
+
+**Для работы MAX бота:**
+
+Создайте файл `server/.env` на основе `server/.env.example`:
+
+```env
+BOT_TOKEN=ваш_токен_от_MAX
+PORT=5000
+```
+
+Запустите сервер:
+
+```bash
+cd server
+npm start
+```
+
+В логах появится подтверждение подключения к MAX:
+```
+[MAX Bot] ✅ Bot started successfully and listening for updates
 ```
 
 ## Структура проекта

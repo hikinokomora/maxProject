@@ -3,6 +3,7 @@ npm-debug.log
 .git
 .gitignore
 .env
+server/.env
 .DS_Store
 README.md
 client/build
