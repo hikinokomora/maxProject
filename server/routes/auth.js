@@ -98,4 +98,43 @@ router.post('/link-max', authenticateToken, async (req, res) => {
   }
 });
 
+/**
+ * POST /api/auth/tuna-login
+ * Auto-login/register user from Tuna (MAX mini-app)
+ * Body: { maxUserId, name, firstName?, lastName?, username? }
+ */
+router.post('/tuna-login', async (req, res) => {
+  try {
+    const { maxUserId, name, firstName, lastName, username } = req.body;
+    
+    if (!maxUserId) {
+      return res.status(400).json({ success: false, error: 'maxUserId is required' });
+    }
+
+    // Find or create user by MAX user ID
+    let user = await authService.findOrCreateByMaxUserId(maxUserId, {
+      name: name || `${firstName || ''} ${lastName || ''}`.trim() || `User ${maxUserId}`,
+      email: username ? `${username}@max.local` : `user_${maxUserId}@max.local`,
+      role: 'STUDENT'
+    });
+
+    if (!user) {
+      return res.status(500).json({ success: false, error: 'Failed to authenticate user' });
+    }
+
+    // Generate token
+    const token = authService.generateToken(user);
+
+    res.json({
+      success: true,
+      data: user,
+      token,
+      message: 'Authenticated via Tuna'
+    });
+  } catch (error) {
+    console.error('[Auth Routes] Tuna login error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 module.exports = router;

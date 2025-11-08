@@ -1,0 +1,27 @@
+# Backend Dockerfile
+FROM node:18-alpine
+
+# Установка зависимостей для Prisma
+RUN apk add --no-cache openssl
+
+# Создаем рабочую директорию
+WORKDIR /app
+
+# Копируем package.json бэкенда
+COPY server/package*.json ./server/
+
+# Устанавливаем зависимости
+WORKDIR /app/server
+RUN npm ci --only=production
+
+# Копируем остальные файлы бэкенда
+COPY server/ ./
+
+# Генерируем Prisma Client
+RUN npx prisma generate
+
+# Открываем порт
+EXPOSE 5000
+
+# Запускаем сервер
+CMD ["sh", "-c", "npx prisma db push && node index.js"]

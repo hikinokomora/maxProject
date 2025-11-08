@@ -12,3 +12,13 @@ client/node_modules
 *.md
 .vscode
 .idea
+server/prisma/dev.db
+server/prisma/*.db
+server/prisma/*.db-journal
+coverage
+logs
+*.log
+.docker
+docker-compose*.yml
+Dockerfile*
+.dockerignore

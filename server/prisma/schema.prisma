@@ -1,9 +1,9 @@
-// Prisma schema for MAX Chatbot with PostgreSQL
-// Updated to use PostgreSQL for better production readiness and authentication
+// Prisma schema for MAX Chatbot
+// Temporary: Using SQLite for quick testing (switch to PostgreSQL for production)
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
+  url      = "file:./dev.db"
 }
 
 generator client {

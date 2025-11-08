@@ -1,29 +1,55 @@
 import React, { useState, useEffect, useRef } from 'react';
 import chatService from '../services/chatService';
+// import tunaService from '../services/tunaService'; // Will be used when Tuna SDK is available
 import '../styles/ChatBot.css';
 
 const MAX_EVENTS_TO_SHOW = 5;
 
-function ChatBot() {
+function ChatBot({ tunaReady, userInfo, isInMiniApp }) {
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [universityInfo, setUniversityInfo] = useState(null);
+  // const [authToken, setAuthToken] = useState(null); // Will be used for authentication
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
     // Load university info
     loadUniversityInfo();
+    
+    // Auto-authenticate if in mini-app with user info
+    if (isInMiniApp && userInfo) {
+      autoAuthenticateUser(userInfo);
+    }
+    
     // Send initial greeting
+    const greeting = isInMiniApp && userInfo 
+      ? `Здравствуйте, ${userInfo.firstName}! Я ваш виртуальный помощник. Чем могу помочь?`
+      : 'Здравствуйте! Я ваш виртуальный помощник. Чем могу помочь?';
+    
     addBotMessage({
-      text: 'Здравствуйте! Я ваш виртуальный помощник. Чем могу помочь?',
+      text: greeting,
       suggestions: ['Расписание', 'Мероприятия', 'Подать заявление', 'Помощь']
     });
-  }, []);
+  }, [isInMiniApp, userInfo]);
 
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  const autoAuthenticateUser = async (user) => {
+    try {
+      // Try to auto-login/register user from MAX messenger
+      // This could be improved with a backend endpoint that accepts MAX user ID
+      console.log('[ChatBot] Auto-authenticating MAX user:', user);
+      
+      // For now, we'll store user info locally
+      // In production, implement proper backend authentication with MAX user ID
+      localStorage.setItem('maxUserInfo', JSON.stringify(user));
+    } catch (error) {
+      console.error('[ChatBot] Auto-auth failed:', error);
+    }
+  };
 
   const loadUniversityInfo = async () => {
     try {
