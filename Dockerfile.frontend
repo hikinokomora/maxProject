@@ -8,10 +8,13 @@ WORKDIR /app
 COPY client/package*.json ./
 
 # Устанавливаем зависимости
-RUN npm ci
+RUN npm install
 
 # Копируем исходники
 COPY client/ ./
+
+# Устанавливаем переменную окружения для production build
+ENV REACT_APP_API_URL=/api
 
 # Собираем production build
 RUN npm run build
