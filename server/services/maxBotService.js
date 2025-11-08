@@ -1,261 +1,313 @@
+// Consolidated: real implementation moved here (from maxBotService2.js)
 const { Bot, Keyboard } = require('@maxhub/max-bot-api');
 const chatService = require('./chatService');
-
-/**
- * MAX Messenger Bot Service
- * Uses official @maxhub/max-bot-api SDK
- * 
- * Documentation: https://dev.max.ru/docs/chatbots/bots-coding/library/js
- */
+const applicationsService = require('./applicationsService');
+const authService = require('./authService');
+const universityConfig = require('../config/university.json');
 
 class MaxBotService {
-  constructor(token) {
-    if (!token) {
-      throw new Error('BOT_TOKEN is required');
-    }
+	constructor(token) {
+		if (!token) throw new Error('BOT_TOKEN is required');
+		this.token = token;
+		this.bot = new Bot(token);
+		this.sessions = new Map();
+		this.setupHandlers();
+	}
 
-    this.token = token;
-    this.bot = new Bot(token);
-    this.setupHandlers();
-    console.log('[MAX Bot] Bot instance created');
-  }
+	setupHandlers() {
+		this.bot.use(async (ctx, next) => {
+			console.log('[MAX Bot] 📥 Update:', JSON.stringify(ctx.update, null, 2));
+			await next();
+		});
 
-  /**
-   * Setup message and event handlers
-   */
-  setupHandlers() {
-    // Log all updates for debugging
-    this.bot.use(async (ctx, next) => {
-      console.log('[MAX Bot] 📥 Received update:', JSON.stringify(ctx.update, null, 2));
-      await next();
-    });
+		this.bot.command('start', async (ctx) => {
+			const welcome = `👋 Добро пожаловать в чат-бот университета!\n\n` +
+				`Я помогу вам с:\n` +
+				`📅 Расписанием занятий\n` +
+				`🎯 Мероприятиями\n` +
+				`📝 Подачей заявлений\n` +
+				`💡 Полезной информацией\n\n` +
+				`Выберите действие ниже или откройте приложение:`;
+			await ctx.reply(welcome, { attachments: [this.buildMainKeyboardWithApp()] });
+		});
 
-    // Handle /start command
-    this.bot.command('start', async (ctx) => {
-      try {
-        console.log(`[MAX Bot] /start command from user ${ctx.user?.user_id}`);
-        
-        const response = chatService.processMessage('привет');
-        await this.sendResponse(ctx, response);
-      } catch (error) {
-        console.error('[MAX Bot] Error handling /start:', error);
-        await ctx.reply('Извините, произошла ошибка. Попробуйте позже.');
-      }
-    });
+		this.bot.on('message_created', async (ctx) => {
+			try {
+				const text = ctx.message?.body?.text || '';
+				const userId = ctx.user?.user_id;
+				const session = this.sessions.get(userId);
 
-    // Handle all incoming text messages
-    this.bot.on('message_created', async (ctx) => {
-      try {
-        const text = ctx.message?.body?.text || '';
-        const userId = ctx.user?.user_id;
-        
-        console.log(`[MAX Bot] Message from ${userId}: ${text}`);
+				if (session) {
+					if (session.mode === 'application') return this.handleApplicationFlow(ctx, text, session);
+					if (session.mode === 'status') return this.handleStatusFlow(ctx, text, session);
+				}
 
-        // Skip if it's a command (already handled by bot.command)
-        if (text.startsWith('/')) {
-          return;
-        }
+				if (text.startsWith('/')) return;
+				const lower = text.toLowerCase().trim();
 
-        // Process message through chat service
-        const response = chatService.processMessage(text);
-        await this.sendResponse(ctx, response);
+				const statusMatch = lower.match(/^статус\s+заявления\s*(\d+)/i);
+				if (statusMatch) return this.replyWithApplicationStatus(ctx, parseInt(statusMatch[1], 10));
 
-      } catch (error) {
-        console.error('[MAX Bot] Error handling message:', error);
-        await ctx.reply('Извините, произошла ошибка при обработке сообщения.');
-      }
-    });
+				if (lower === 'статус заявления') {
+					this.sessions.set(userId, { mode: 'status', step: 'askId' });
+					return ctx.reply('Укажите номер заявления (например: 12)');
+				}
 
-    // Handle callback button clicks
-    this.bot.on('message_callback', async (ctx) => {
-      try {
-        const payload = ctx.update?.callback?.payload;
-        const userId = ctx.user?.user_id;
-        
-        console.log(`[MAX Bot] Callback from ${userId}: ${payload}`);
+				if (lower === 'мои заявления') {
+					this.sessions.set(userId, { mode: 'status', step: 'askStudentId' });
+					return ctx.reply('Введите номер студенческого (или табельный):');
+				}
 
-        // Process callback as regular message
-        const response = chatService.processMessage(payload);
-        await this.sendResponse(ctx, response);
+				const response = chatService.processMessage(text);
+				await this.sendResponse(ctx, response);
+			} catch (e) {
+				console.error('[MAX Bot] message_created error:', e);
+				await ctx.reply('Ошибка обработки сообщения.');
+			}
+		});
 
-      } catch (error) {
-        console.error('[MAX Bot] Error handling callback:', error);
-      }
-    });
+		this.bot.on('message_callback', async (ctx) => {
+			try {
+				const payload = ctx.update?.callback?.payload;
+				const userId = ctx.user?.user_id;
 
-    // Handle bot added to chat
-    this.bot.on('bot_added', async (ctx) => {
-      try {
-        console.log(`[MAX Bot] Bot added to chat ${ctx.chat?.chat_id}`);
-        await ctx.reply('Спасибо, что добавили меня! Напишите /start для начала работы.');
-      } catch (error) {
-        console.error('[MAX Bot] Error handling bot_added:', error);
-      }
-    });
+				if (payload === 'Подать заявление') {
+					return this.sendApplicationTypes(ctx, universityConfig.applicationTypes);
+				}
 
-    // Handle bot started (user initiated conversation)
-    this.bot.on('bot_started', async (ctx) => {
-      try {
-        console.log(`[MAX Bot] Bot started by user ${ctx.user?.user_id}`);
-        const response = chatService.processMessage('привет');
-        await this.sendResponse(ctx, response);
-      } catch (error) {
-        console.error('[MAX Bot] Error handling bot_started:', error);
-      }
-    });
-  }
+				if (payload?.startsWith('Подать ')) {
+					const name = payload.replace('Подать ', '').trim();
+					const type = universityConfig.applicationTypes.find(t => t.name.toLowerCase() === name.toLowerCase());
+					if (!type) {
+						await ctx.reply('Тип не распознан, выберите из списка.');
+						return this.sendApplicationTypes(ctx, universityConfig.applicationTypes);
+					}
+					this.sessions.set(userId, { mode: 'application', step: 'studentName', data: { type: type.id, typeName: type.name } });
+					return ctx.reply(`Начнем заявление «${type.name}». Введите ваше ФИО.`);
+				}
 
-  /**
-   * Send formatted response with text and optional keyboard
-   */
-  async sendResponse(ctx, response) {
-    try {
-      // Send main text response
-      if (response.text) {
-        const options = {};
+				if (payload?.startsWith('dep:')) {
+					const dep = payload.slice(4);
+					const session = this.sessions.get(userId);
+					if (session?.mode === 'application' && session.step === 'department') {
+						session.data.department = dep;
+						session.step = 'email';
+						return ctx.reply('Укажите ваш email для уведомлений:');
+					}
+				}
 
-        // Add inline keyboard with suggestions
-        if (response.suggestions && response.suggestions.length > 0) {
-          const keyboard = this.buildKeyboard(response.suggestions);
-          options.attachments = [keyboard];
-        }
+				const response = chatService.processMessage(payload);
+				await this.sendResponse(ctx, response);
+			} catch (e) {
+				console.error('[MAX Bot] callback error:', e);
+			}
+		});
 
-        await ctx.reply(response.text, options);
-      }
+		this.bot.on('bot_added', async (ctx) => ctx.reply('Спасибо! Напишите /start для начала.'));
+		this.bot.on('bot_started', async (ctx) => {
+			const response = chatService.processMessage('привет');
+			await this.sendResponse(ctx, response);
+		});
+	}
 
-      // Handle specific action types
-      if (response.action === 'events' && response.events) {
-        await this.sendEvents(ctx, response.events);
-      }
+	async handleApplicationFlow(ctx, text, session) {
+		const userId = ctx.user?.user_id;
+		const maxUserId = ctx.user?.user_id;
+		const value = text?.trim();
 
-      if (response.applicationTypes && response.applicationTypes.length > 0) {
-        await this.sendApplicationTypes(ctx, response.applicationTypes);
-      }
+		switch (session.step) {
+			case 'studentName':
+				session.data.studentName = value;
+				session.step = 'studentId';
+				return ctx.reply('Укажите номер студенческого билета (или табельный номер):');
+			case 'studentId': {
+				session.data.studentId = value;
+				session.step = 'department';
+				const buttons = [universityConfig.departments.slice(0, 3).map(d => Keyboard.button.callback(d, `dep:${d}`))];
+				return ctx.reply('Выберите факультет/подразделение:', { attachments: [Keyboard.inlineKeyboard(buttons)] });
+			}
+			case 'department':
+				session.data.department = value;
+				session.step = 'email';
+				return ctx.reply('Укажите ваш email для уведомлений:');
+			case 'email':
+				if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return ctx.reply('Введите корректный email (пример: ivanov@example.com)');
+				session.data.email = value;
+				session.step = 'description';
+				return ctx.reply('Кратко опишите, что требуется (необязательно). Если нечего добавлять — отправьте «-».');
+			case 'description': {
+				session.data.description = value === '-' ? '' : value;
+				
+				// Find or create user by MAX user ID
+				let user = await authService.findOrCreateByMaxUserId(maxUserId, {
+					email: session.data.email,
+					name: session.data.studentName,
+					role: 'STUDENT'
+				});
 
-      if (response.commands && response.commands.length > 0) {
-        await this.sendCommands(ctx, response.commands);
-      }
+				if (!user) {
+					await ctx.reply('⚠️ Ошибка авторизации. Пожалуйста, попробуйте позже.');
+					this.sessions.delete(userId);
+					return;
+				}
 
-    } catch (error) {
-      console.error('[MAX Bot] Error sending response:', error);
-      throw error;
-    }
-  }
+				const result = await applicationsService.createApplication({
+					type: session.data.type,
+					studentName: session.data.studentName,
+					studentId: session.data.studentId,
+					department: session.data.department,
+					description: session.data.description,
+					email: session.data.email,
+					userId: user.id
+				});
+				
+				if (!result.success) {
+					await ctx.reply(`Не удалось создать заявление: ${result.message}`);
+				} else {
+					await ctx.reply(
+						`✅ Заявление №${result.data.id} создано:\n` +
+						`• Тип: ${result.data.typeName}\n` +
+						`• ФИО: ${result.data.studentName}\n` +
+						`• Номер: ${result.data.studentId}\n` +
+						`• Подразделение: ${result.data.department}\n` +
+						`Мы отправим уведомление о статусе на ${result.data.email}.`
+					);
+				}
+				this.sessions.delete(userId);
+				const keyboard = this.buildKeyboard(['Статус заявления', 'Мои заявления', 'Расписание', 'Мероприятия', 'Подать заявление']);
+				return ctx.reply('Чем ещё могу помочь?', { attachments: [keyboard] });
+			}
+			default:
+				this.sessions.delete(userId);
+				return ctx.reply('Давайте начнём сначала. Выберите тип заявления:', { attachments: [this.buildKeyboard(universityConfig.applicationTypes.map(a => a.name))] });
+		}
+	}
 
-  /**
-   * Build inline keyboard from suggestion array
-   */
-  buildKeyboard(suggestions) {
-    // Group suggestions into rows (max 3 buttons per row for better UX)
-    const buttons = [];
-    for (let i = 0; i < suggestions.length; i += 3) {
-      const rowButtons = suggestions.slice(i, i + 3).map(suggestion =>
-        Keyboard.button.callback(suggestion, suggestion)
-      );
-      buttons.push(rowButtons);
-    }
+	async handleStatusFlow(ctx, text, session) {
+		const userId = ctx.user?.user_id;
+		const value = text?.trim();
 
-    return Keyboard.inlineKeyboard(buttons);
-  }
+		if (session.step === 'askId') {
+			const id = parseInt(value, 10);
+			if (isNaN(id)) return ctx.reply('Пожалуйста, введите числовой ID заявления (например: 12).');
+			await this.replyWithApplicationStatus(ctx, id);
+			this.sessions.delete(userId);
+			return;
+		}
 
-  /**
-   * Send formatted events list
-   */
-  async sendEvents(ctx, events) {
-    if (!events || events.length === 0) {
-      return;
-    }
+		if (session.step === 'askStudentId') {
+			const studentId = value;
+			const result = await applicationsService.getApplicationsByStudentId(studentId);
+			if (!result.success) {
+				await ctx.reply(`Не удалось получить список: ${result.message}`);
+			} else if (!result.data || result.data.length === 0) {
+				await ctx.reply('Заявления не найдены. Вы можете подать новое через «Подать заявление».');
+			} else {
+				const listText = this.formatApplicationsList(result.data);
+				await ctx.reply(listText, { format: 'markdown' });
+			}
+			this.sessions.delete(userId);
+			const keyboard = this.buildKeyboard(['Статус заявления', 'Подать заявление', 'Помощь']);
+			await ctx.reply('Что дальше?', { attachments: [keyboard] });
+		}
+	}
 
-    let text = '📅 *Предстоящие мероприятия:*\n\n';
-    events.forEach((event, index) => {
-      text += `${index + 1}. **${event.title}**\n`;
-      text += `   📝 ${event.description}\n`;
-      text += `   📍 ${event.location}\n`;
-      text += `   🕐 ${event.date} в ${event.time}\n\n`;
-    });
+	async replyWithApplicationStatus(ctx, id) {
+		const result = await applicationsService.getApplicationById(id);
+		if (!result.success || !result.data) return ctx.reply('Заявление не найдено. Проверьте номер и попробуйте снова.');
+		const a = result.data;
+		const text = [
+			`📝 Заявление №${a.id}`,
+			`• Тип: ${a.typeName}`,
+			`• Статус: ${a.status}`,
+			`• ФИО: ${a.studentName}`,
+			`• Номер: ${a.studentId}`,
+			a.department ? `• Подразделение: ${a.department}` : null,
+			`• Email: ${a.email}`,
+			`Создано: ${new Date(a.createdAt).toLocaleString()}`
+		].filter(Boolean).join('\n');
+		await ctx.reply(text);
+	}
 
-    await ctx.reply(text, { format: 'markdown' });
-  }
+	formatApplicationsList(list) {
+		let text = '📄 *Ваши заявления:*\n';
+		for (const a of list) {
+			text += `\n• №${a.id}: ${a.typeName} — ${a.status}`;
+		}
+		text += '\n\nЧтобы узнать подробности: Статус заявления <ID> (например: Статус заявления 12)';
+		return text;
+	}
 
-  /**
-   * Send formatted application types
-   */
-  async sendApplicationTypes(ctx, types) {
-    if (!types || types.length === 0) {
-      return;
-    }
+	async sendResponse(ctx, response) {
+		if (response.text) {
+			const options = {};
+			if (response.suggestions?.length) options.attachments = [this.buildKeyboard(response.suggestions)];
+			await ctx.reply(response.text, options);
+		}
+		if (response.action === 'events' && response.events) await this.sendEvents(ctx, response.events);
+		if (response.applicationTypes?.length) await this.sendApplicationTypes(ctx, response.applicationTypes);
+		if (response.commands?.length) await this.sendCommands(ctx, response.commands);
+	}
 
-    let text = '📄 *Доступные типы заявлений:*\n\n';
-    types.forEach((type, index) => {
-      text += `${index + 1}. **${type.name}**\n`;
-      text += `   ${type.description}\n\n`;
-    });
+	buildKeyboard(suggestions) {
+		const rows = [];
+		for (let i = 0; i < suggestions.length; i += 3) {
+			rows.push(suggestions.slice(i, i + 3).map(s => Keyboard.button.callback(s, s)));
+		}
+		return Keyboard.inlineKeyboard(rows);
+	}
 
-    // Add buttons for each application type
-    const buttons = types.map(type =>
-      Keyboard.button.callback(type.name, `Подать ${type.name}`)
-    );
-    
-    const keyboard = Keyboard.inlineKeyboard([buttons.slice(0, 3)]);
+	buildMainKeyboardWithApp() {
+		const appUrl = process.env.MINI_APP_URL || 'http://localhost:3000';
+		return Keyboard.inlineKeyboard([
+			[
+				Keyboard.button.callback('📅 Расписание', 'Расписание'),
+				Keyboard.button.callback('🎯 Мероприятия', 'Мероприятия'),
+				Keyboard.button.callback('📝 Заявления', 'Подать заявление')
+			],
+			[Keyboard.button.link('🚀 Открыть приложение', appUrl)],
+			[Keyboard.button.callback('❓ Помощь', 'Помощь')]
+		]);
+	}
 
-    await ctx.reply(text, { 
-      format: 'markdown',
-      attachments: [keyboard]
-    });
-  }
+	async sendEvents(ctx, events) {
+		if (!events?.length) return;
+		let text = '📅 *Предстоящие мероприятия:*\n\n';
+		events.forEach((e, i) => {
+			text += `${i + 1}. **${e.title}**\n   📝 ${e.description}\n   📍 ${e.location}\n   🕐 ${e.date} в ${e.time}\n\n`;
+		});
+		await ctx.reply(text, { format: 'markdown' });
+	}
 
-  /**
-   * Send formatted commands list
-   */
-  async sendCommands(ctx, commands) {
-    if (!commands || commands.length === 0) {
-      return;
-    }
+	async sendApplicationTypes(ctx, types) {
+		if (!types?.length) return;
+		let text = '📄 *Доступные типы заявлений:*\n\n';
+		types.forEach((t, i) => {
+			text += `${i + 1}. **${t.name}**\n   ${t.description}\n\n`;
+		});
+		const buttons = types.slice(0, 3).map(t => Keyboard.button.callback(t.name, `Подать ${t.name}`));
+		await ctx.reply(text, { format: 'markdown', attachments: [Keyboard.inlineKeyboard([buttons])] });
+	}
 
-    let text = '📋 *Доступные команды:*\n\n';
-    commands.forEach(cmd => {
-      text += `**${cmd.command}** — ${cmd.description}\n`;
-    });
+	async sendCommands(ctx, commands) {
+		if (!commands?.length) return;
+		let text = '📋 *Доступные команды:*\n\n';
+		for (const c of commands) text += `**${c.command}** — ${c.description}\n`;
+		await ctx.reply(text, { format: 'markdown' });
+	}
 
-    await ctx.reply(text, { format: 'markdown' });
-  }
+	async start() {
+		console.log('[MAX Bot] Starting bot...');
+		console.log('[MAX Bot] Token:', this.token ? `${this.token.slice(0,8)}...` : 'NONE');
+		this.bot.start()
+			.then(() => console.log('[MAX Bot] ✅ Bot started'))
+			.catch(err => console.error('[MAX Bot] ❌ Start failed:', err.message));
+	}
 
-  /**
-   * Start bot polling
-   */
-  async start() {
-    try {
-      console.log('[MAX Bot] Starting bot...');
-      console.log('[MAX Bot] Using token:', this.token ? `${this.token.substring(0, 10)}...` : 'NONE');
-      
-      // Start bot in background (don't await)
-      this.bot.start().then(() => {
-        console.log('[MAX Bot] ✅ Bot started successfully and listening for updates');
-      }).catch((error) => {
-        console.error('[MAX Bot] ❌ Failed to start bot:', error.message);
-        console.error('[MAX Bot] Error details:', error);
-      });
-      
-      // Return immediately
-      console.log('[MAX Bot] Bot start initiated (running in background)');
-    } catch (error) {
-      console.error('[MAX Bot] ❌ Exception during bot start:', error.message);
-      console.error('[MAX Bot] Error details:', error);
-    }
-  }
-
-  /**
-   * Stop bot
-   */
-  async stop() {
-    try {
-      console.log('[MAX Bot] Stopping bot...');
-      await this.bot.stop();
-      console.log('[MAX Bot] Bot stopped');
-    } catch (error) {
-      console.error('[MAX Bot] Error stopping bot:', error);
-    }
-  }
+	async stop() {
+		console.log('[MAX Bot] Stopping bot...');
+		try { await this.bot.stop(); console.log('[MAX Bot] Bot stopped'); } catch(e){ console.error('[MAX Bot] Stop error', e); }
+	}
 }
 
 module.exports = MaxBotService;

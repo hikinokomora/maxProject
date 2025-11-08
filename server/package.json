@@ -11,12 +11,17 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@maxhub/max-bot-api": "^0.2.1",
+    "@prisma/client": "^5.18.0",
+    "bcrypt": "^5.1.1",
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
     "express": "^4.18.2",
     "express-rate-limit": "^6.11.2",
-    "dotenv": "^16.4.5",
-    "@maxhub/max-bot-api": "^0.2.1"
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.16.3",
+    "prisma": "^5.18.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"

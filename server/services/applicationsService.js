@@ -1,26 +1,33 @@
 const universityConfig = require('../config/university.json');
+const prisma = require('./db');
 
 class ApplicationsService {
   constructor() {
     this.config = universityConfig;
-    // Mock storage - в реальном приложении это будет база данных
-    this.applications = [];
-    // Use timestamp-based IDs for better uniqueness
-    this.nextId = Date.now();
   }
 
-  generateId() {
-    return this.nextId++;
-  }
-
-  createApplication(data) {
-    const { type, studentName, studentId, department, description, email } = data;
+  /**
+   * Create new application
+   * @param {Object} data - Application data
+   * @param {number} data.userId - Database user ID (required for linking)
+   * @returns {Promise<{success: boolean, message?: string, data?: Object}>}
+   */
+  async createApplication(data) {
+    const { type, studentName, studentId, department, description, email, userId } = data;
 
     // Validate required fields
     if (!type || !studentName || !studentId || !email) {
       return {
         success: false,
         message: 'Пожалуйста, заполните все обязательные поля'
+      };
+    }
+
+    // userId is now required for proper linking
+    if (!userId) {
+      return {
+        success: false,
+        message: 'User must be authenticated to submit application'
       };
     }
 
@@ -33,49 +40,117 @@ class ApplicationsService {
       };
     }
 
-    const application = {
-      id: this.generateId(),
-      type,
-      typeName: validType.name,
-      studentName,
-      studentId,
-      department,
-      description,
-      email,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
+    try {
+      const application = await prisma.application.create({
+        data: {
+          type,
+          typeName: validType.name,
+          studentName,
+          studentId,
+          department,
+          description,
+          email,
+          status: 'pending',
+          userId
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+              role: true
+            }
+          }
+        }
+      });
 
-    this.applications.push(application);
-
-    return {
-      success: true,
-      message: `Заявление №${application.id} успешно создано. Статус заявления будет отправлен на email: ${email}`,
-      data: application
-    };
+      return {
+        success: true,
+        message: `Заявление №${application.id} успешно создано. Статус заявления будет отправлен на email: ${email}`,
+        data: application
+      };
+    } catch (e) {
+      console.error('[ApplicationsService] Create error:', e);
+      return { success: false, message: e.message };
+    }
   }
 
   getApplicationById(id) {
-    const application = this.applications.find(a => a.id === parseInt(id));
-    if (!application) {
-      return {
-        success: false,
-        message: 'Заявление не найдено'
-      };
-    }
-    return {
-      success: true,
-      data: application
-    };
+    return prisma.application.findUnique({ 
+      where: { id: parseInt(id) },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            role: true
+          }
+        }
+      }
+    })
+      .then(app => app ? ({ success: true, data: app }) : ({ success: false, message: 'Заявление не найдено' }))
+      .catch(e => ({ success: false, message: e.message }));
   }
 
   getApplicationsByStudentId(studentId) {
-    const studentApplications = this.applications.filter(a => a.studentId === studentId);
-    return {
-      success: true,
-      data: studentApplications
-    };
+    return prisma.application.findMany({ 
+      where: { studentId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            role: true
+          }
+        }
+      }
+    })
+      .then(list => ({ success: true, data: list }))
+      .catch(e => ({ success: false, message: e.message }));
+  }
+
+  /**
+   * Get all applications (for teachers/staff - shows real student names)
+   * @param {Object} filters - Optional filters
+   * @returns {Promise<{success: boolean, data?: Array, message?: string}>}
+   */
+  async getAllApplications(filters = {}) {
+    try {
+      const where = {};
+      
+      if (filters.status) {
+        where.status = filters.status;
+      }
+      
+      if (filters.department) {
+        where.department = filters.department;
+      }
+
+      const applications = await prisma.application.findMany({
+        where,
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+              role: true
+            }
+          }
+        },
+        orderBy: {
+          createdAt: 'desc'
+        }
+      });
+
+      return { success: true, data: applications };
+    } catch (e) {
+      console.error('[ApplicationsService] Get all error:', e);
+      return { success: false, message: e.message };
+    }
   }
 
   getApplicationTypes() {
@@ -86,22 +161,11 @@ class ApplicationsService {
   }
 
   updateApplicationStatus(id, status) {
-    const application = this.applications.find(a => a.id === parseInt(id));
-    if (!application) {
-      return {
-        success: false,
-        message: 'Заявление не найдено'
-      };
-    }
-
-    application.status = status;
-    application.updatedAt = new Date().toISOString();
-
-    return {
-      success: true,
-      message: 'Статус заявления обновлен',
-      data: application
-    };
+    return prisma.application.update({
+      where: { id: parseInt(id) },
+      data: { status }
+    }).then(a => ({ success: true, message: 'Статус заявления обновлен', data: a }))
+      .catch(() => ({ success: false, message: 'Заявление не найдено' }));
   }
 }
 

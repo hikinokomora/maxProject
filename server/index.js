@@ -4,12 +4,18 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
 const rateLimit = require('express-rate-limit');
+const { attachUser, requireRole } = require('./middleware/auth');
+const prisma = require('./services/db');
 
 const chatRoutes = require('./routes/chat');
 const scheduleRoutes = require('./routes/schedule');
 const eventsRoutes = require('./routes/events');
 const applicationsRoutes = require('./routes/applications');
+const usersRoutes = require('./routes/users');
+const authRoutes = require('./routes/auth');
+// Updated: consolidated bot service now lives in maxBotService.js
 const MaxBotService = require('./services/maxBotService');
+const { seedAdmin } = require('./services/seedService');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -39,12 +45,29 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use('/api/', limiter); // Apply rate limiting to all API routes
+app.use(attachUser); // attach provisional user context
 
 // API Routes
+app.use('/api/auth', authRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/schedule', scheduleRoutes);
 app.use('/api/events', eventsRoutes);
 app.use('/api/applications', applicationsRoutes);
+app.use('/api/users', usersRoutes);
+
+// Protected admin diagnostics route (example)
+app.get('/api/admin/db-stats', requireRole('ADMIN','STAFF'), async (req, res) => {
+  try {
+    const [users, applications, events] = await Promise.all([
+      prisma.user.count(),
+      prisma.application.count(),
+      prisma.event.count()
+    ]);
+    res.json({ success:true, data:{ users, applications, events }});
+  } catch (e) {
+    res.status(500).json({ success:false, error:e.message });
+  }
+});
 
 // Serve static files from React app in production
 if (process.env.NODE_ENV === 'production') {
@@ -61,10 +84,13 @@ app.get('/health', (req, res) => {
 });
 
 // Start server
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   const maskedToken = BOT_TOKEN ? `${BOT_TOKEN.slice(0, 6)}...${BOT_TOKEN.slice(-4)}` : 'NOT SET';
   console.log(`🚀 MAX Chatbot Server running on port ${PORT}`);
   console.log(`🔐 BOT_TOKEN: ${maskedToken}`);
+  
+  // Seed admin user on startup
+  await seedAdmin();
   
   if (!BOT_TOKEN) {
     console.warn('⚠️  BOT_TOKEN is not set.');
