@@ -7,9 +7,14 @@
     "start": "node index.js",
     "dev": "nodemon index.js"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": ["max", "chatbot", "backend", "express", "prisma"],
+  "author": "hikinokomora",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hikinokomora/maxProject.git",
+    "directory": "server"
+  },
   "dependencies": {
     "@maxhub/max-bot-api": "^0.2.1",
     "@prisma/client": "^5.18.0",

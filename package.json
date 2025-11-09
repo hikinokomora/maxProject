@@ -19,8 +19,16 @@
     "university",
     "education"
   ],
-  "author": "",
+  "author": "hikinokomora",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hikinokomora/maxProject.git"
+  },
+  "bugs": {
+    "url": "https://github.com/hikinokomora/maxProject/issues"
+  },
+  "homepage": "https://github.com/hikinokomora/maxProject#readme",
   "devDependencies": {
     "concurrently": "^8.2.2"
   }
