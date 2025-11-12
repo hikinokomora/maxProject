@@ -117,14 +117,14 @@ class AuthService {
    * @param {Object} user - User object
    * @returns {string} JWT token
    */
-  generateToken(user) {
+  generateToken(user, expiresIn = JWT_EXPIRES_IN) {
     const payload = {
       id: user.id,
       email: user.email,
       role: user.role,
       maxUserId: user.maxUserId
     };
-    return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+    return jwt.sign(payload, JWT_SECRET, { expiresIn });
   }
 
   /**

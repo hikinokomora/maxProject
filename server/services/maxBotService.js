@@ -70,6 +70,14 @@ class MaxBotService {
 			try {
 				const payload = ctx.update?.callback?.payload;
 				const userId = ctx.user?.user_id;
+				if (payload === 'Мой токен' || payload === '🔐 Мой токен') {
+					const maxUserId = ctx.user?.user_id;
+					let user = await authService.findOrCreateByMaxUserId(maxUserId, { name: ctx.user?.full_name || `User ${maxUserId}`, email: `user_${maxUserId}@max.local`, role: 'STUDENT' });
+					if (!user) return ctx.reply('Не удалось получить профиль. Попробуйте позже.');
+					const token = authService.generateToken(user, '1h');
+					await ctx.reply('Ваш временный токен (действителен 1 час):');
+					return ctx.reply(token);
+				}
 
 				if (payload === 'Подать заявление') {
 					return this.sendApplicationTypes(ctx, universityConfig.applicationTypes);
@@ -265,7 +273,10 @@ class MaxBotService {
 				Keyboard.button.callback('🎯 Мероприятия', 'Мероприятия'),
 				Keyboard.button.callback('📝 Заявления', 'Подать заявление')
 			],
-			[Keyboard.button.callback('❓ Помощь', 'Помощь')]
+			[
+				Keyboard.button.callback('❓ Помощь', 'Помощь'),
+				Keyboard.button.callback('🔐 Мой токен', 'Мой токен')
+			]
 		]);
 	}
 
