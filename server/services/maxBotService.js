@@ -27,7 +27,7 @@ class MaxBotService {
 				`🎯 Мероприятиями\n` +
 				`📝 Подачей заявлений\n` +
 				`💡 Полезной информацией\n\n` +
-				`Выберите действие ниже или откройте приложение:`;
+				`Выберите действие ниже:`;
 			await ctx.reply(welcome, { attachments: [this.buildMainKeyboardWithApp()] });
 		});
 
@@ -258,14 +258,13 @@ class MaxBotService {
 	}
 
 	buildMainKeyboardWithApp() {
-		const appUrl = process.env.MINI_APP_URL || 'http://localhost:3000';
+		// Мини-приложение удалено: оставляем только клавиши бота
 		return Keyboard.inlineKeyboard([
 			[
 				Keyboard.button.callback('📅 Расписание', 'Расписание'),
 				Keyboard.button.callback('🎯 Мероприятия', 'Мероприятия'),
 				Keyboard.button.callback('📝 Заявления', 'Подать заявление')
 			],
-			[Keyboard.button.link('🚀 Открыть приложение', appUrl)],
 			[Keyboard.button.callback('❓ Помощь', 'Помощь')]
 		]);
 	}

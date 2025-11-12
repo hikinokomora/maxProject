@@ -1,25 +1,18 @@
 FROM node:18-alpine
 
-WORKDIR /app
+WORKDIR /app/server
 
-# Copy server package files and install dependencies
-COPY server/package*.json ./server/
-RUN cd server && npm install --legacy-peer-deps && cd server && npx prisma generate
+# Backend-only Dockerfile (mini-app removed)
 
-# Copy client package files and install dependencies
-COPY client/package*.json ./client/
-RUN cd client && npm install --legacy-peer-deps
+# Install dependencies
+COPY server/package*.json ./
+RUN npm install --legacy-peer-deps && npx prisma generate
 
-# Copy application files
-COPY server ./server
-RUN cd server && npx prisma db push
-COPY client ./client
+# Copy server code
+COPY server/ ./
 
-# Build React app
-RUN cd client && npm run build
+# Expose backend port
+EXPOSE 5000
 
-# Expose ports
-EXPOSE 3000 5000
-
-# Start the application
-CMD ["node", "server/index.js"]
+# Run DB migration (for dev) and start server
+CMD ["sh", "-c", "npx prisma db push --skip-generate && node index.js"]

@@ -77,17 +77,12 @@ Write-Host "`n📊 Статус контейнеров:" -ForegroundColor Yellow
 docker-compose ps
 
 Write-Host "`n✅ Проект успешно запущен!" -ForegroundColor Green
-Write-Host "`n📱 Приложение доступно по адресу: http://localhost:3000" -ForegroundColor Cyan
-Write-Host "🔧 API доступен по адресу: http://localhost:5000" -ForegroundColor Cyan
+Write-Host "� API доступен по адресу: http://localhost:5000" -ForegroundColor Cyan
+Write-Host "🤖 Бот подключится автоматически при наличии BOT_TOKEN" -ForegroundColor Cyan
 Write-Host "`n📝 Полезные команды:" -ForegroundColor Yellow
 Write-Host "   • Просмотр логов:        docker-compose logs -f" -ForegroundColor Gray
 Write-Host "   • Просмотр логов backend: docker-compose logs -f backend" -ForegroundColor Gray
-Write-Host "   • Просмотр логов frontend: docker-compose logs -f frontend" -ForegroundColor Gray
 Write-Host "   • Остановка:             docker-compose down" -ForegroundColor Gray
 Write-Host "   • Или используйте:       .\stop-docker.ps1" -ForegroundColor Gray
-Write-Host "`n🌐 Открыть в браузере? (Y/N): " -ForegroundColor Cyan -NoNewline
-$response = Read-Host
-if ($response -eq 'Y' -or $response -eq 'y') {
-    Start-Process "http://localhost:3000"
-}
+Write-Host "" 
 

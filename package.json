@@ -3,14 +3,12 @@
   "version": "1.0.0",
   "description": "Universal chatbot for MAX messenger to digitize university processes",
   "scripts": {
-    "install:all": "npm install && cd client && npm install && cd ../server && npm install",
-    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "install:all": "cd server && npm install",
+    "dev": "npm run dev:server",
     "dev:server": "cd server && npm run dev",
-    "dev:client": "cd client && npm start",
-    "build": "cd client && npm run build",
     "start": "cd server && npm start",
-    "docker:build": "docker build -t max-chatbot .",
-    "docker:run": "docker run -p 3000:3000 -p 5000:5000 max-chatbot"
+  "docker:build": "docker build -t max-chatbot -f Dockerfile.backend .",
+    "docker:run": "docker run -p 5000:5000 max-chatbot"
   },
   "keywords": [
     "chatbot",
@@ -29,7 +27,5 @@
     "url": "https://github.com/hikinokomora/maxProject/issues"
   },
   "homepage": "https://github.com/hikinokomora/maxProject#readme",
-  "devDependencies": {
-    "concurrently": "^8.2.2"
-  }
+  "devDependencies": {}
 }

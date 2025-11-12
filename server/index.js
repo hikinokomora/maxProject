@@ -69,14 +69,7 @@ app.get('/api/admin/db-stats', requireRole('ADMIN','STAFF'), async (req, res) =>
   }
 });
 
-// Serve static files from React app in production
-if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '../client/build')));
-  
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../client/build', 'index.html'));
-  });
-}
+// Мини-приложение/Frontend удалены — статики нет
 
 // Health check endpoint
 app.get('/health', (req, res) => {

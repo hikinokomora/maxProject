@@ -15,8 +15,6 @@ BOT_TOKEN=your_bot_token_here
 PORT=5000
 NODE_ENV=production
 
-# Frontend URL
-MINI_APP_URL=http://localhost:3000
 
 # JWT Configuration
 JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
@@ -48,10 +46,10 @@ docker-compose up -d
 
 Write-Host ""
 Write-Host "✅ Приложение запущено!" -ForegroundColor Green
-Write-Host ""
-Write-Host "🌐 Доступ к приложению:" -ForegroundColor Cyan
-Write-Host "   Frontend (React): http://localhost:3000" -ForegroundColor White
-Write-Host "   Backend API:      http://localhost:5000" -ForegroundColor White
+Write-Host "" 
+Write-Host "🌐 Доступ к сервисам:" -ForegroundColor Cyan
+Write-Host "   Backend API: http://localhost:5000" -ForegroundColor White
+Write-Host "   Бот подключится автоматически при наличии BOT_TOKEN" -ForegroundColor White
 Write-Host ""
 Write-Host "📊 Просмотр логов:" -ForegroundColor Cyan
 Write-Host "   docker-compose logs -f" -ForegroundColor White
