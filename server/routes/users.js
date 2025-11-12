@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const prisma = require('../services/db');
-const { requireRole } = require('../middleware/auth');
+const { authenticateToken, requireRole } = require('../middleware/auth');
 
-// POST /api/users - create or upsert user (self registration allowed)
-router.post('/', async (req, res) => {
+// POST /api/users - create or upsert user (admin/staff only)
+router.post('/', authenticateToken, requireRole('ADMIN','STAFF'), async (req, res) => {
   try {
     const { email, name, role, maxUserId } = req.body;
     const finalRole = ['STUDENT','TEACHER','STAFF','ADMIN'].includes((role||'').toUpperCase()) ? role.toUpperCase() : 'STUDENT';
@@ -20,7 +20,7 @@ router.post('/', async (req, res) => {
 });
 
 // GET /api/users - list users (restricted)
-router.get('/', requireRole('ADMIN','STAFF'), async (_req, res) => {
+router.get('/', authenticateToken, requireRole('ADMIN','STAFF'), async (_req, res) => {
   try {
     const list = await prisma.user.findMany({ orderBy:{ id:'desc' } });
     res.json({ success:true, data:list });

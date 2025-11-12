@@ -4,22 +4,24 @@
 
 ## Быстрый старт
 
-### Docker
+### Docker (с PostgreSQL)
 
 ```powershell
 # 1) Запустите Docker Desktop
 # 2) Запустите проект:
 .\start-docker.ps1
 
-# API доступен на http://localhost:5000
+# Сервисы работают ТОЛЬКО внутри docker-сети (порты наружу не публикуются)
+# Обращайтесь к API изнутри сети Docker, например:
+#   docker run --rm --network maxproject_app-network curlimages/curl:8.11.0 -s http://backend:5000/health
 # Бот подключится автоматически при наличии BOT_TOKEN
 ```
 
-### Локальная разработка
+### Локальная разработка (PostgreSQL)
 
 ```powershell
 npm run install:all   # Установка зависимостей (только server)
-# Создайте server/.env (см. ниже)
+# Создайте server/.env (см. ниже) с Postgres DSN
 npm run dev           # Запуск backend с hot-reload (порт 5000)
 ```
 
@@ -30,7 +32,7 @@ npm run dev           # Запуск backend с hot-reload (порт 5000)
 ```env
 PORT=5000
 BOT_TOKEN=your-max-bot-token
-DATABASE_URL="postgresql://username:password@localhost:5432/maxchatbot" # или SQLite в dev
+DATABASE_URL="postgresql://postgres:postgres@db:5432/maxchatbot?schema=public"
 JWT_SECRET="your-secret-key"
 JWT_EXPIRES_IN=7d
 ADMIN_EMAIL="admin@university.edu"
@@ -58,6 +60,10 @@ npm run dev:server       # backend с hot-reload
 .\stop-docker.ps1        # остановка
 docker-compose logs -f   # логи
 
+# Взаимодействие с API внутри сети Docker
+docker-compose exec backend wget -qO- http://localhost:5000/health
+docker run --rm --network maxproject_app-network curlimages/curl:8.11.0 -s http://backend:5000/api/events
+
 # База данных
 cd server
 npx prisma studio        # GUI для БД
@@ -67,3 +73,7 @@ npx prisma db push       # Применить схему
 ## Лицензия
 
 MIT
+
+---
+
+См. также: SECURITY.md — роли и уровни доступа (RBAC)

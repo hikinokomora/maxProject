@@ -2,8 +2,8 @@
 // Temporary: Using SQLite for quick testing (switch to PostgreSQL for production)
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 generator client {
@@ -11,16 +11,105 @@ generator client {
 }
 
 // User model with authentication support
+// ----- Core auth user -----
 model User {
-  id           Int           @id @default(autoincrement())
-  maxUserId    Int?          @unique
-  email        String        @unique
-  password     String        // bcrypt hashed password
+  id           Int              @id @default(autoincrement())
+  maxUserId    Int?             @unique
+  email        String           @unique
+  password     String           // bcrypt hashed password
   name         String
-  role         String        @default("STUDENT") // STUDENT, TEACHER, STAFF, ADMIN
+  role         String           @default("STUDENT") // STUDENT, TEACHER, STAFF, ADMIN
+  // Profiles
+  student      StudentProfile?
+  // Relations
   applications Application[]
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+}
+
+// ----- Academic structure -----
+enum StudyType {
+  BACHELOR
+  SPECIALIST
+  MASTER
+  POSTGRAD
+}
+
+model Institute {
+  id         Int         @id @default(autoincrement())
+  name       String
+  shortName  String?
+  directions Direction[]
+  students   StudentProfile[]
+}
+
+model Direction {
+  id          Int         @id @default(autoincrement())
+  name        String
+  code        String?
+  level       StudyType
+  institute   Institute   @relation(fields: [instituteId], references: [id])
+  instituteId Int
+  groups      Group[]
+  students    StudentProfile[]
+}
+
+model Group {
+  id          Int         @id @default(autoincrement())
+  name        String      @unique
+  course      Int
+  direction   Direction   @relation(fields: [directionId], references: [id])
+  directionId Int
+  students    StudentProfile[]
+  lessons     Lesson[]    @relation("GroupsOnLessons")
+}
+
+model Teacher {
+  id        Int      @id @default(autoincrement())
+  fullName  String
+  department String?
+  lessons   Lesson[] @relation("TeachersOnLessons")
+}
+
+model Lesson {
+  id        Int      @id @default(autoincrement())
+  weekday   String   // e.g. Понедельник/Вторник ... или MON/TUE
+  startTime String   // 09:00
+  endTime   String   // 10:30
+  subject   String
+  room      String?
+  type      String?  // лекция/семинар/лаб
+  groups    Group[]  @relation("GroupsOnLessons")
+  teachers  Teacher[] @relation("TeachersOnLessons")
+}
+
+// ----- Student details -----
+model StudentProfile {
+  id          Int         @id @default(autoincrement())
+  user        User        @relation(fields: [userId], references: [id])
+  userId      Int         @unique
+  studyType   StudyType
+  institute   Institute?  @relation(fields: [instituteId], references: [id])
+  instituteId Int?
+  direction   Direction?  @relation(fields: [directionId], references: [id])
+  directionId Int?
+  group       Group?      @relation(fields: [groupId], references: [id])
+  groupId     Int?
+  course      Int?
+  paid        Boolean     @default(false) // false=бюджет, true=платник
+  debts       AcademicDebt[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model AcademicDebt {
+  id          Int            @id @default(autoincrement())
+  student     StudentProfile @relation(fields: [studentId], references: [id])
+  studentId   Int
+  subject     String
+  description String?
+  closed      Boolean        @default(false)
+  createdAt   DateTime       @default(now())
 }
 
 model Application {

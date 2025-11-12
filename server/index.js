@@ -13,9 +13,10 @@ const eventsRoutes = require('./routes/events');
 const applicationsRoutes = require('./routes/applications');
 const usersRoutes = require('./routes/users');
 const authRoutes = require('./routes/auth');
+const studentsRoutes = require('./routes/students');
 // Updated: consolidated bot service now lives in maxBotService.js
 const MaxBotService = require('./services/maxBotService');
-const { seedAdmin } = require('./services/seedService');
+const { seedAdmin, seedAcademics } = require('./services/seedService');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -54,6 +55,7 @@ app.use('/api/schedule', scheduleRoutes);
 app.use('/api/events', eventsRoutes);
 app.use('/api/applications', applicationsRoutes);
 app.use('/api/users', usersRoutes);
+app.use('/api/students', studentsRoutes);
 
 // Protected admin diagnostics route (example)
 app.get('/api/admin/db-stats', requireRole('ADMIN','STAFF'), async (req, res) => {
@@ -84,6 +86,8 @@ app.listen(PORT, async () => {
   
   // Seed admin user on startup
   await seedAdmin();
+  // Seed base academic data if empty
+  await seedAcademics();
   
   if (!BOT_TOKEN) {
     console.warn('⚠️  BOT_TOKEN is not set.');
