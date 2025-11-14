@@ -23,11 +23,6 @@
       "id": "certificate",
       "name": "Справка",
       "description": "Запрос справки об обучении"
-    },
-    {
-      "id": "transfer",
-      "name": "Перевод",
-      "description": "Заявление на перевод на другую специальность"
     }
   ],
   "departments": [
