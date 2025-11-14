@@ -14,6 +14,7 @@ const applicationsRoutes = require('./routes/applications');
 const usersRoutes = require('./routes/users');
 const authRoutes = require('./routes/auth');
 const studentsRoutes = require('./routes/students');
+const analyticsRoutes = require('./routes/analytics');
 // Updated: consolidated bot service now lives in maxBotService.js
 const MaxBotService = require('./services/maxBotService');
 const { seedAdmin, seedAcademics } = require('./services/seedService');
@@ -26,6 +27,7 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 let maxBot = null;
 if (BOT_TOKEN) {
   maxBot = new MaxBotService(BOT_TOKEN);
+  global.maxBotInstance = maxBot; // Сохраняем глобально для уведомлений
   console.log('[MAX Bot] Initializing bot service...');
 } else {
   console.warn('⚠️  BOT_TOKEN not set. Bot will not connect to MAX messenger.');
@@ -56,6 +58,7 @@ app.use('/api/events', eventsRoutes);
 app.use('/api/applications', applicationsRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/students', studentsRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 // Protected admin diagnostics route (example)
 app.get('/api/admin/db-stats', requireRole('ADMIN','STAFF'), async (req, res) => {

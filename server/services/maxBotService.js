@@ -3,6 +3,8 @@ const { Bot, Keyboard } = require('@maxhub/max-bot-api');
 const chatService = require('./chatService');
 const applicationsService = require('./applicationsService');
 const authService = require('./authService');
+const prisma = require('./db');
+const pdfService = require('./pdfService');
 const universityConfig = require('../config/university.json');
 
 class MaxBotService {
@@ -21,14 +23,16 @@ class MaxBotService {
 		});
 
 		this.bot.command('start', async (ctx) => {
-			const welcome = `👋 Добро пожаловать в чат-бот университета!\n\n` +
-				`Я помогу вам с:\n` +
-				`📅 Расписанием занятий\n` +
-				`🎯 Мероприятиями\n` +
-				`📝 Подачей заявлений\n` +
-				`💡 Полезной информацией\n\n` +
-				`Выберите действие ниже:`;
-			await ctx.reply(welcome, { attachments: [this.buildMainKeyboardWithApp()] });
+			const welcome = `👋 **Добро пожаловать в чат-бот университета!**\n\n` +
+				`Я ваш персональный помощник, который поможет вам с:\n\n` +
+				`📅 **Расписанием занятий** — узнайте когда и где проходят пары\n` +
+				`🎯 **Мероприятиями** — не пропустите важные события\n` +
+				`📝 **Заявлениями** — быстрая подача и отслеживание статуса\n` +
+				`👤 **Профилем** — сохраните данные для упрощённой работы\n` +
+				`❓ **Помощью** — получите ответы на вопросы\n\n` +
+				`💡 Все даты и время указаны в московском часовом поясе (МСК, UTC+3)\n\n` +
+				`✨ Выберите действие на клавиатуре ниже:`;
+			await ctx.reply(welcome, { format: 'markdown', attachments: [this.buildMainKeyboardWithApp()] });
 		});
 
 		this.bot.on('message_created', async (ctx) => {
@@ -40,6 +44,7 @@ class MaxBotService {
 				if (session) {
 					if (session.mode === 'application') return this.handleApplicationFlow(ctx, text, session);
 					if (session.mode === 'status') return this.handleStatusFlow(ctx, text, session);
+					if (session.mode === 'profile') return this.handleProfileFlow(ctx, text, session);
 				}
 
 				if (text.startsWith('/')) return;
@@ -70,19 +75,100 @@ class MaxBotService {
 			try {
 				const payload = ctx.update?.callback?.payload;
 				const userId = ctx.user?.user_id;
-				if (payload === 'Мой токен' || payload === '🔐 Мой токен') {
-					const maxUserId = ctx.user?.user_id;
-					let user = await authService.findOrCreateByMaxUserId(maxUserId, { name: ctx.user?.full_name || `User ${maxUserId}`, email: `user_${maxUserId}@max.local`, role: 'STUDENT' });
-					if (!user) return ctx.reply('Не удалось получить профиль. Попробуйте позже.');
-					const token = authService.generateToken(user, '1h');
-					await ctx.reply('Ваш временный токен (действителен 1 час):');
-					return ctx.reply(token);
+				const maxUserId = ctx.user?.user_id;
+				
+				// Мой профиль
+				if (payload === 'Мой профиль' || payload === '� Мой профиль') {
+					return this.showProfile(ctx);
 				}
 
-				if (payload === 'Подать заявление') {
+				// Редактировать профиль
+				if (payload === 'Редактировать профиль') {
+					this.sessions.set(userId, { mode: 'profile', step: 'name' });
+					return ctx.reply('Введите ваше полное ФИО:');
+				}
+
+				// Получить справку об обучении
+				if (payload === 'Получить справку') {
+					let user = await authService.findOrCreateByMaxUserId(maxUserId, { 
+						name: ctx.user?.full_name || `User ${maxUserId}`, 
+						email: `user_${maxUserId}@max.local`, 
+						role: 'STUDENT' 
+					});
+					
+					const profile = await prisma.studentProfile.findUnique({
+						where: { userId: user.id },
+						include: { institute: true, direction: true, group: true }
+					});
+					
+					if (!profile) {
+						return ctx.reply('⚠️ Сначала заполните профиль студента.');
+					}
+					
+					await ctx.reply('⏳ Генерирую справку...');
+					
+					const result = await pdfService.generateStudyCertificate({
+						userId: user.id,
+						name: user.name,
+						institute: profile.institute?.name,
+						direction: profile.direction?.name,
+						group: profile.group?.name,
+						course: profile.course,
+						paid: profile.paid
+					});
+					
+					if (result.success) {
+						await ctx.reply(
+							`✅ Справка об обучении готова!\n\n` +
+							`📄 Файл: ${result.filename}\n\n` +
+							`⚠️ Внимание: Это демо-версия справки. ` +
+							`Для получения официальной справки обратитесь в деканат.`
+						);
+						// TODO: Отправить файл когда MAX API будет поддерживать отправку файлов
+					} else {
+						await ctx.reply('❌ Ошибка генерации справки. Попробуйте позже.');
+					}
+					return;
+				}
+
+				// Мои заявления
+				if (payload === 'Мои заявления') {
+					// Получаем профиль пользователя
+					let user = await authService.findOrCreateByMaxUserId(maxUserId, { 
+						name: ctx.user?.full_name || `User ${maxUserId}`, 
+						email: `user_${maxUserId}@max.local`, 
+						role: 'STUDENT' 
+					});
+					
+					if (!user) return ctx.reply('Ошибка получения профиля. Попробуйте позже.');
+					
+					// Ищем заявления по userId
+					const result = await applicationsService.getApplicationsByUserId(user.id);
+					console.log(`[MAX Bot] Applications for user ${user.id}:`, result);
+					
+					if (!result.success) {
+						await ctx.reply(`Не удалось получить список: ${result.message}`);
+					} else if (!result.data || result.data.length === 0) {
+						await ctx.reply('У вас пока нет заявлений. Вы можете подать новое через «Подать заявление».');
+					} else {
+						const listText = this.formatApplicationsList(result.data);
+						await ctx.reply(listText, { format: 'markdown' });
+					}
+					return;
+				}
+
+				// Статус заявления
+				if (payload === 'Статус заявления') {
+					this.sessions.set(userId, { mode: 'status', step: 'askId' });
+					return ctx.reply('Укажите номер заявления (например: 12)');
+				}
+
+				// Подать заявление
+				if (payload === 'Подать заявление' || payload === '📝 Заявления') {
 					return this.sendApplicationTypes(ctx, universityConfig.applicationTypes);
 				}
 
+				// Подать конкретное заявление
 				if (payload?.startsWith('Подать ')) {
 					const name = payload.replace('Подать ', '').trim();
 					const type = universityConfig.applicationTypes.find(t => t.name.toLowerCase() === name.toLowerCase());
@@ -90,10 +176,40 @@ class MaxBotService {
 						await ctx.reply('Тип не распознан, выберите из списка.');
 						return this.sendApplicationTypes(ctx, universityConfig.applicationTypes);
 					}
-					this.sessions.set(userId, { mode: 'application', step: 'studentName', data: { type: type.id, typeName: type.name } });
-					return ctx.reply(`Начнем заявление «${type.name}». Введите ваше ФИО.`);
+					
+					// Получаем профиль для автозаполнения
+					let user = await authService.findOrCreateByMaxUserId(maxUserId, { 
+						name: ctx.user?.full_name || `User ${maxUserId}`, 
+						email: `user_${maxUserId}@max.local`, 
+						role: 'STUDENT' 
+					});
+					
+					if (!user) {
+						return ctx.reply('⚠️ Ошибка получения профиля. Попробуйте позже.');
+					}
+					
+					// Проверяем, заполнен ли профиль студента
+					const profile = await prisma.studentProfile.findUnique({ where: { userId: user.id } });
+					
+					if (!profile || !profile.groupId) {
+						await ctx.reply('⚠️ Пожалуйста, сначала заполните ваш профиль (группа, курс и т.д.).\nНажмите «Мой профиль» → «Редактировать профиль»');
+						return;
+					}
+					
+					this.sessions.set(userId, { 
+						mode: 'application', 
+						step: 'description',
+						data: { 
+							type: type.id, 
+							typeName: type.name,
+							studentName: user.name,
+							userId: user.id
+						} 
+					});
+					return ctx.reply(`Заявление «${type.name}».\n\nКратко опишите, что требуется (или отправьте «-» чтобы пропустить):`);
 				}
 
+				// Выбор факультета (уже не используется, т.к. берём из профиля)
 				if (payload?.startsWith('dep:')) {
 					const dep = payload.slice(4);
 					const session = this.sessions.get(userId);
@@ -104,6 +220,7 @@ class MaxBotService {
 					}
 				}
 
+				// Остальные кнопки - передаём в chatService
 				const response = chatService.processMessage(payload);
 				await this.sendResponse(ctx, response);
 			} catch (e) {
@@ -123,71 +240,62 @@ class MaxBotService {
 		const maxUserId = ctx.user?.user_id;
 		const value = text?.trim();
 
-		switch (session.step) {
-			case 'studentName':
-				session.data.studentName = value;
-				session.step = 'studentId';
-				return ctx.reply('Укажите номер студенческого билета (или табельный номер):');
-			case 'studentId': {
-				session.data.studentId = value;
-				session.step = 'department';
-				const buttons = [universityConfig.departments.slice(0, 3).map(d => Keyboard.button.callback(d, `dep:${d}`))];
-				return ctx.reply('Выберите факультет/подразделение:', { attachments: [Keyboard.inlineKeyboard(buttons)] });
-			}
-			case 'department':
-				session.data.department = value;
-				session.step = 'email';
-				return ctx.reply('Укажите ваш email для уведомлений:');
-			case 'email':
-				if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return ctx.reply('Введите корректный email (пример: ivanov@example.com)');
-				session.data.email = value;
-				session.step = 'description';
-				return ctx.reply('Кратко опишите, что требуется (необязательно). Если нечего добавлять — отправьте «-».');
-			case 'description': {
-				session.data.description = value === '-' ? '' : value;
-				
-				// Find or create user by MAX user ID
-				let user = await authService.findOrCreateByMaxUserId(maxUserId, {
-					email: session.data.email,
-					name: session.data.studentName,
-					role: 'STUDENT'
-				});
-
-				if (!user) {
-					await ctx.reply('⚠️ Ошибка авторизации. Пожалуйста, попробуйте позже.');
-					this.sessions.delete(userId);
-					return;
+		// Упрощённый флоу - только описание, всё остальное из профиля
+		if (session.step === 'description') {
+			session.data.description = value === '-' ? '' : value;
+			
+			console.log('[MAX Bot] Creating application with data:', session.data);
+			
+			// Получаем полный профиль студента
+			const profile = await prisma.studentProfile.findUnique({
+				where: { userId: session.data.userId },
+				include: { 
+					group: true, 
+					institute: true,
+					direction: true,
+					user: true
 				}
-
-				const result = await applicationsService.createApplication({
-					type: session.data.type,
-					studentName: session.data.studentName,
-					studentId: session.data.studentId,
-					department: session.data.department,
-					description: session.data.description,
-					email: session.data.email,
-					userId: user.id
-				});
-				
-				if (!result.success) {
-					await ctx.reply(`Не удалось создать заявление: ${result.message}`);
-				} else {
-					await ctx.reply(
-						`✅ Заявление №${result.data.id} создано:\n` +
-						`• Тип: ${result.data.typeName}\n` +
-						`• ФИО: ${result.data.studentName}\n` +
-						`• Номер: ${result.data.studentId}\n` +
-						`• Подразделение: ${result.data.department}\n` +
-						`Мы отправим уведомление о статусе на ${result.data.email}.`
-					);
-				}
+			});
+			
+			if (!profile || !profile.group) {
+				await ctx.reply('⚠️ Профиль не найден. Заполните профиль через «Мой профиль».');
 				this.sessions.delete(userId);
-				const keyboard = this.buildKeyboard(['Статус заявления', 'Мои заявления', 'Расписание', 'Мероприятия', 'Подать заявление']);
-				return ctx.reply('Чем ещё могу помочь?', { attachments: [keyboard] });
+				return;
 			}
-			default:
-				this.sessions.delete(userId);
-				return ctx.reply('Давайте начнём сначала. Выберите тип заявления:', { attachments: [this.buildKeyboard(universityConfig.applicationTypes.map(a => a.name))] });
+
+			const result = await applicationsService.createApplication({
+				type: session.data.type,
+				typeName: session.data.typeName,
+				studentName: profile.user.name,
+				studentId: profile.group.name, // Используем группу как идентификатор
+				department: profile.institute?.name || profile.direction?.name || 'Не указано',
+				description: session.data.description,
+				email: profile.user.email,
+				userId: session.data.userId
+			});
+			
+			console.log('[MAX Bot] Application creation result:', result);
+			
+			if (!result.success) {
+				await ctx.reply(`Не удалось создать заявление: ${result.message}`);
+			} else {
+				// Отправляем уведомление создателю
+				await ctx.reply(
+					`✅ Заявление №${result.data.id} создано!\n\n` +
+					`• Тип: ${result.data.typeName}\n` +
+					`• ФИО: ${result.data.studentName}\n` +
+					`• Группа: ${result.data.studentId}\n` +
+					`• Подразделение: ${result.data.department}\n\n` +
+					`Вы получите уведомление, когда статус изменится.`
+				);
+				
+				// TODO: Уведомление админам/преподавателям о новом заявлении
+				console.log(`[MAX Bot] New application #${result.data.id} from user ${profile.user.name}`);
+			}
+			
+			this.sessions.delete(userId);
+			const keyboard = this.buildKeyboard(['Мои заявления', 'Расписание', 'Мероприятия', 'Подать заявление']);
+			return ctx.reply('Чем ещё могу помочь?', { attachments: [keyboard] });
 		}
 	}
 
@@ -205,7 +313,9 @@ class MaxBotService {
 
 		if (session.step === 'askStudentId') {
 			const studentId = value;
+			console.log(`[MAX Bot] Looking for applications with studentId: "${studentId}"`);
 			const result = await applicationsService.getApplicationsByStudentId(studentId);
+			console.log(`[MAX Bot] Applications result:`, result);
 			if (!result.success) {
 				await ctx.reply(`Не удалось получить список: ${result.message}`);
 			} else if (!result.data || result.data.length === 0) {
@@ -224,25 +334,46 @@ class MaxBotService {
 		const result = await applicationsService.getApplicationById(id);
 		if (!result.success || !result.data) return ctx.reply('Заявление не найдено. Проверьте номер и попробуйте снова.');
 		const a = result.data;
+		
+		// Эмодзи-статусы
+		const statusEmoji = {
+			'pending': '🕐 В обработке',
+			'approved': '✅ Одобрено',
+			'rejected': '❌ Отклонено',
+			'processing': '⚙️ В работе'
+		};
+		
+		const createdDate = new Date(a.createdAt);
+		// Конвертируем в московское время (UTC+3)
+		const moscowDate = new Date(createdDate.getTime() + (3 * 60 * 60 * 1000));
+		
 		const text = [
-			`📝 Заявление №${a.id}`,
-			`• Тип: ${a.typeName}`,
-			`• Статус: ${a.status}`,
-			`• ФИО: ${a.studentName}`,
-			`• Номер: ${a.studentId}`,
-			a.department ? `• Подразделение: ${a.department}` : null,
-			`• Email: ${a.email}`,
-			`Создано: ${new Date(a.createdAt).toLocaleString()}`
+			`📝 *Заявление №${a.id}*\n`,
+			`Статус: ${statusEmoji[a.status] || a.status}`,
+			`Тип: ${a.typeName}`,
+			`ФИО: ${a.studentName}`,
+			`Группа: ${a.studentId}`,
+			a.department ? `Подразделение: ${a.department}` : null,
+			a.description ? `\n💬 Описание: ${a.description}` : null,
+			`\n📅 Создано: ${moscowDate.toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })}`
 		].filter(Boolean).join('\n');
-		await ctx.reply(text);
+		await ctx.reply(text, { format: 'markdown' });
 	}
 
 	formatApplicationsList(list) {
+		const statusEmoji = {
+			'pending': '🕐',
+			'approved': '✅',
+			'rejected': '❌',
+			'processing': '⚙️'
+		};
+		
 		let text = '📄 *Ваши заявления:*\n';
 		for (const a of list) {
-			text += `\n• №${a.id}: ${a.typeName} — ${a.status}`;
+			const emoji = statusEmoji[a.status] || '📋';
+			text += `\n${emoji} №${a.id}: ${a.typeName}`;
 		}
-		text += '\n\nЧтобы узнать подробности: Статус заявления <ID> (например: Статус заявления 12)';
+		text += '\n\n💡 Для подробностей: Статус заявления <ID>\n(например: Статус заявления 12)';
 		return text;
 	}
 
@@ -274,17 +405,28 @@ class MaxBotService {
 				Keyboard.button.callback('📝 Заявления', 'Подать заявление')
 			],
 			[
-				Keyboard.button.callback('❓ Помощь', 'Помощь'),
-				Keyboard.button.callback('🔐 Мой токен', 'Мой токен')
+				Keyboard.button.callback('👤 Мой профиль', 'Мой профиль'),
+				Keyboard.button.callback('❓ Помощь', 'Помощь')
 			]
 		]);
 	}
 
 	async sendEvents(ctx, events) {
 		if (!events?.length) return;
-		let text = '📅 *Предстоящие мероприятия:*\n\n';
+		let text = '🎯 *Предстоящие мероприятия:*\n';
 		events.forEach((e, i) => {
-			text += `${i + 1}. **${e.title}**\n   📝 ${e.description}\n   📍 ${e.location}\n   🕐 ${e.date} в ${e.time}\n\n`;
+			// Форматируем дату для UTC+3
+			const eventDate = new Date(e.date);
+			const dateStr = eventDate.toLocaleDateString('ru-RU', { 
+				day: '2-digit', 
+				month: 'long',
+				timeZone: 'Europe/Moscow'
+			});
+			
+			text += `\n${i + 1}. 📌 **${e.title}**`;
+			text += `\n   📝 ${e.description}`;
+			text += `\n   📍 ${e.location}`;
+			text += `\n   🕐 ${dateStr} в ${e.time} (МСК)`;
 		});
 		await ctx.reply(text, { format: 'markdown' });
 	}
@@ -304,6 +446,161 @@ class MaxBotService {
 		let text = '📋 *Доступные команды:*\n\n';
 		for (const c of commands) text += `**${c.command}** — ${c.description}\n`;
 		await ctx.reply(text, { format: 'markdown' });
+	}
+
+	async showProfile(ctx) {
+		const maxUserId = ctx.user?.user_id;
+		
+		// Получаем или создаём пользователя
+		let user = await authService.findOrCreateByMaxUserId(maxUserId, { 
+			name: ctx.user?.full_name || `User ${maxUserId}`, 
+			email: `user_${maxUserId}@max.local`, 
+			role: 'STUDENT' 
+		});
+		
+		if (!user) return ctx.reply('Ошибка получения профиля.');
+		
+		// Получаем профиль студента
+		const profile = await prisma.studentProfile.findUnique({
+			where: { userId: user.id },
+			include: {
+				institute: true,
+				direction: true,
+				group: true,
+				debts: { where: { closed: false } }
+			}
+		});
+		
+		if (!profile) {
+			await ctx.reply(
+				`👤 *Ваш профиль*\n\n` +
+				`ФИО: ${user.name}\n` +
+				`Email: ${user.email}\n\n` +
+				`⚠️ Профиль студента не заполнен.\nЗаполните его для упрощённой подачи заявлений.`,
+				{ format: 'markdown', attachments: [Keyboard.inlineKeyboard([[Keyboard.button.callback('Заполнить профиль', 'Редактировать профиль')]])] }
+			);
+			return;
+		}
+		
+		// Получаем статистику по заявлениям
+		const applications = await prisma.application.findMany({
+			where: { userId: user.id }
+		});
+		
+		const stats = {
+			total: applications.length,
+			pending: applications.filter(a => a.status === 'pending').length,
+			approved: applications.filter(a => a.status === 'approved').length,
+			rejected: applications.filter(a => a.status === 'rejected').length
+		};
+		
+		const text = [
+			`👤 *Ваш профиль*\n`,
+			`ФИО: ${user.name}`,
+			`Email: ${user.email}`,
+			`\n🎓 *Учебная информация:*`,
+			`Институт: ${profile.institute?.name || 'не указан'}`,
+			`Направление: ${profile.direction?.name || 'не указано'}`,
+			`Группа: ${profile.group?.name || 'не указана'}`,
+			`Курс: ${profile.course || 'не указан'}`,
+			profile.debts && profile.debts.length > 0 ? `\n⚠️ *Академические долги:*` : null,
+			...profile.debts?.map(d => `• ${d.subject}${d.description ? ' — ' + d.description : ''}`) || [],
+			stats.total > 0 ? `\n📊 *Статистика заявлений:*` : null,
+			stats.total > 0 ? `Всего: ${stats.total}` : null,
+			stats.pending > 0 ? `🕐 В обработке: ${stats.pending}` : null,
+			stats.approved > 0 ? `✅ Одобрено: ${stats.approved}` : null,
+			stats.rejected > 0 ? `❌ Отклонено: ${stats.rejected}` : null
+		].filter(Boolean).join('\n');
+		
+		await ctx.reply(text, {
+			format: 'markdown',
+			attachments: [Keyboard.inlineKeyboard([
+				[Keyboard.button.callback('Редактировать', 'Редактировать профиль')],
+				[Keyboard.button.callback('📄 Справка об обучении', 'Получить справку')]
+			])]
+		});
+	}
+
+	async handleProfileFlow(ctx, text, session) {
+		const userId = ctx.user?.user_id;
+		const maxUserId = ctx.user?.user_id;
+		const value = text?.trim();
+
+		// Получаем пользователя
+		let user = await authService.findOrCreateByMaxUserId(maxUserId, { 
+			name: ctx.user?.full_name || `User ${maxUserId}`, 
+			email: `user_${maxUserId}@max.local`, 
+			role: 'STUDENT' 
+		});
+		
+		if (!user) {
+			await ctx.reply('Ошибка авторизации.');
+			this.sessions.delete(userId);
+			return;
+		}
+
+		switch (session.step) {
+			case 'name':
+				// Обновляем имя пользователя
+				await prisma.user.update({ where: { id: user.id }, data: { name: value } });
+				session.step = 'group';
+				
+				// Получаем список групп
+				const groups = await prisma.group.findMany({ include: { direction: { include: { institute: true } } } });
+				if (groups.length === 0) {
+					await ctx.reply('⚠️ В системе нет групп. Обратитесь к администратору.');
+					this.sessions.delete(userId);
+					return;
+				}
+				
+				session.data = { groups };
+				let groupsText = '📚 Выберите вашу группу:\n\n';
+				groups.forEach((g, i) => {
+					groupsText += `${i + 1}. ${g.name} (${g.direction.name})\n`;
+				});
+				groupsText += '\nВведите номер группы (например: 1)';
+				return ctx.reply(groupsText);
+				
+			case 'group': {
+				const idx = parseInt(value, 10) - 1;
+				if (isNaN(idx) || idx < 0 || idx >= session.data.groups.length) {
+					return ctx.reply('Некорректный номер. Введите число от 1 до ' + session.data.groups.length);
+				}
+				
+				const selectedGroup = session.data.groups[idx];
+				
+				// Создаём или обновляем профиль студента
+				await prisma.studentProfile.upsert({
+					where: { userId: user.id },
+					create: {
+						userId: user.id,
+						studyType: 'BACHELOR',
+						instituteId: selectedGroup.direction.instituteId,
+						directionId: selectedGroup.directionId,
+						groupId: selectedGroup.id,
+						course: selectedGroup.course,
+						paid: false
+					},
+					update: {
+						instituteId: selectedGroup.direction.instituteId,
+						directionId: selectedGroup.directionId,
+						groupId: selectedGroup.id,
+						course: selectedGroup.course
+					}
+				});
+				
+				await ctx.reply(
+					`✅ Профиль обновлён!\n\n` +
+					`Группа: ${selectedGroup.name}\n` +
+					`Направление: ${selectedGroup.direction.name}\n` +
+					`Курс: ${selectedGroup.course}`
+				);
+				
+				this.sessions.delete(userId);
+				const keyboard = this.buildMainKeyboardWithApp();
+				return ctx.reply('Теперь вы можете подавать заявления!', { attachments: [keyboard] });
+			}
+		}
 	}
 
 	async start() {

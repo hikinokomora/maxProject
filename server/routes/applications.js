@@ -93,7 +93,7 @@ router.patch('/:id/status', authenticateToken, requireRole('TEACHER', 'STAFF', '
       return res.status(400).json({ success: false, error: 'Status is required' });
     }
     
-    const result = await applicationsService.updateApplicationStatus(id, status);
+    const result = await applicationsService.updateApplicationStatus(id, status, req.user.name);
     
     if (!result.success) {
       return res.status(404).json(result);
